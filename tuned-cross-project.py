@@ -13,6 +13,8 @@ from sklearn.neighbors import KNeighborsRegressor
 from mlxtend.regressor import StackingRegressor
 from xgboost import XGBRegressor, XGBRFRegressor
 import time
+import concurrent.futures
+
 
 def read_data(folders):
     mergers=[]
@@ -39,6 +41,7 @@ def read_data(folders):
     test_label=test_label.values.reshape(-1,1)
 
     return test_features,test_label,folders[0]
+
 
 
 def get_data(folders):
@@ -76,7 +79,6 @@ def mean_relative_error(actual, predicted):
         rel_err.append(err)
     return np.mean(rel_err)
 
-
 def measure_completeness(actual, predicted):
     actual,predicted=np.array(actual), np.array(predicted)
     truth=np.sum(actual)
@@ -92,7 +94,7 @@ def predl(actual,predicted,l):
             chosen=chosen+1
     return chosen/len(actual)
 
-def hyper(x_train, y_train):
+def hyper(x_train, y_train,filename):
     parameters_svr=[]
     parameters_rfr=[]
     parameters_sv=[]
@@ -108,7 +110,7 @@ def hyper(x_train, y_train):
     result_kn=[]
     result_et=[]
     for seed in range(0,20):
-        print("Run: ",seed+1)
+        print("Tuning Run: ",seed+1," ",filename," started.")
         params_tree = {
             'n_estimators':[50,126],
             'min_samples_leaf':[30,50],
@@ -158,16 +160,16 @@ def hyper(x_train, y_train):
             'meta_regressor__n_estimators':[20,50,100,150,500]
             }
 
-        print('DTR')
-        rand_search_dtr = RandomizedSearchCV(DecisionTreeRegressor(), params_d_tree, cv=10,random_state=seed)
+        #print('DTR')
+        rand_search_dtr = RandomizedSearchCV(DecisionTreeRegressor(), params_d_tree, cv=10,random_state=seed,n_jobs=-1)
         rand_search_dtr.fit(x_train, y_train)
         best_tuned_dt_m = rand_search_dtr.best_params_
         best_tuned_dt_s = rand_search_dtr.best_score_
         parameters_dt.append(best_tuned_dt_m)
         result_dt.append(best_tuned_dt_s)
 
-        print('RFR')
-        rand_search_rfr = RandomizedSearchCV(RandomForestRegressor(), params_tree, cv=10,random_state=seed)
+        #print('RFR')
+        rand_search_rfr = RandomizedSearchCV(RandomForestRegressor(), params_tree, cv=10,random_state=seed,n_jobs=-1)
         rand_search_rfr.fit(x_train, y_train)
         best_tuned_rf_m = rand_search_rfr.best_params_
         best_tuned_rf_s = rand_search_rfr.best_score_
@@ -175,53 +177,54 @@ def hyper(x_train, y_train):
         result_rf.append(best_tuned_rf_s)
 
 
-        print('ETR')
-        rand_search_etr = RandomizedSearchCV(ExtraTreesRegressor(), params_tree, cv=10,random_state=seed)
+        #print('ETR')
+        rand_search_etr = RandomizedSearchCV(ExtraTreesRegressor(), params_tree, cv=10,random_state=seed,n_jobs=-1)
         rand_search_etr.fit(x_train, y_train)
         best_tuned_et_m = rand_search_etr.best_params_
         best_tuned_et_s = rand_search_etr.best_score_
         parameters_et.append(best_tuned_et_m)
         result_et.append(best_tuned_et_s)
 
-        print('KNN')
-        rand_search_knn = RandomizedSearchCV(KNeighborsRegressor(), params_knn, cv=10,random_state=seed)
+        #print('KNN')
+        rand_search_knn = RandomizedSearchCV(KNeighborsRegressor(), params_knn, cv=10,random_state=seed,n_jobs=-1)
         rand_search_knn.fit(x_train, y_train)
         best_tuned_kn_m = rand_search_knn.best_params_
         best_tuned_kn_s = rand_search_knn.best_score_
         parameters_kn.append(best_tuned_kn_m)
         result_kn.append(best_tuned_kn_s)
 
-        print('SVR')
-        rand_search_svr = RandomizedSearchCV(SVR(), params_svr, cv=10,random_state=seed)
+        #print('SVR')
+        rand_search_svr = RandomizedSearchCV(SVR(), params_svr, cv=10,random_state=seed,n_jobs=-1)
         rand_search_svr.fit(x_train, y_train)
         best_tuned_sv_m = rand_search_svr.best_params_
         best_tuned_sv_s = rand_search_svr.best_score_
         parameters_sv.append(best_tuned_sv_m)
         result_sv.append(best_tuned_sv_s)
 
-        print('SR')
-        reg1=SVR(C=rand_search_svr.best_params_['C'],gamma=rand_search_svr.best_params_['gamma'])
+        #print('SR')
+        reg1=SVR()
         reg2=ExtraTreesRegressor()
         reg3=KNeighborsRegressor()
         reg4=RandomForestRegressor()
-        rand_search_sr = RandomizedSearchCV(StackingRegressor(regressors=[reg1,reg2,reg3,reg4], meta_regressor=SVR()), params_2, cv=10,random_state=seed, n_jobs=4)
+        rand_search_sr = RandomizedSearchCV(StackingRegressor(regressors=[reg1,reg2,reg3,reg4], meta_regressor=SVR()), params_2, cv=10,random_state=seed, n_jobs=-1)
         rand_search_sr.fit(x_train, y_train)
         best_tuned_sr_m = rand_search_sr.best_params_
         best_tuned_sr_s = rand_search_sr.best_score_
         parameters_svr.append(best_tuned_sr_m)
         result_svr.append(best_tuned_sr_s)
 
-        print('SR2')
+        #print('SR2')
         reg1=SVR()
         reg2=ExtraTreesRegressor()
         reg3=KNeighborsRegressor()
         reg4=RandomForestRegressor()
-        rand_search_sr2 = RandomizedSearchCV(StackingRegressor(regressors=[reg1,reg2,reg3,reg4], meta_regressor=RandomForestRegressor()), params_1, cv=10,random_state=seed, n_jobs=4)
+        rand_search_sr2 = RandomizedSearchCV(StackingRegressor(regressors=[reg1,reg2,reg3,reg4], meta_regressor=RandomForestRegressor()), params_1, cv=10,random_state=seed, n_jobs=-1)
         rand_search_sr2.fit(x_train, y_train)
         best_tuned_sr2_m = rand_search_sr2.best_params_
         best_tuned_sr2_s = rand_search_sr2.best_score_
         parameters_rfr.append(best_tuned_sr2_m)
         result_rfr.append(best_tuned_sr2_s)
+        print("Tuning Run: ",seed+1," ",filename," finished.")
 
     best_pics={
         'svr':parameters_sv[result_sv.index(max(result_sv))],
@@ -244,7 +247,7 @@ def run_techniques(train_folders,test_folders):
     warnings.filterwarnings("ignore")
 
     train_label=np.ravel(train_label,order='C')
-    best=hyper(train_features, train_label)
+    best=hyper(train_features, train_label,filename)
 
     stravgmre,stravgmretest=[],[]
     stravgmae,stravgmaetest=[],[]
@@ -307,7 +310,7 @@ def run_techniques(train_folders,test_folders):
     bavgrmse,bavgrmsetest=[],[]
 
     for run in range(0,20):
-        print('run: ', run+1)
+        print("Testing Run: ",run+1," ",filename," started.")
 
         kf=KFold(n_splits=10,shuffle=True,random_state=run)
         i=1
@@ -373,13 +376,13 @@ def run_techniques(train_folders,test_folders):
         brmse,brmsetest=[],[]
 
         for train_index,test_index in kf.split(train_features):
-            print('fold number: ', i)
+            #print('fold number: ', i)
 
             x_train,x_test=train_features[train_index],train_features[test_index]
             y_train,y_test=train_label[train_index],train_label[test_index]
 
 
-            print('DTR')
+            #print('DTR')
             dtr = DecisionTreeRegressor(max_depth=best['dtr']['max_depth'])
             dtr.fit(x_train, y_train)
             y_pred = dtr.predict(test_features)
@@ -401,7 +404,7 @@ def run_techniques(train_folders,test_folders):
             dtrpredl.append(predl(test_label,y_pred,0.3))
             dtrrsq.append(metrics.r2_score(test_label,y_pred))
 
-            print('RFR')
+            #print('RFR')
             rfr = RandomForestRegressor(n_estimators=best['rfr']['n_estimators'],min_samples_leaf=best['rfr']['min_samples_leaf'],max_depth=best['rfr']['max_depth'])
             rfr.fit(x_train, y_train)
             y_pred = rfr.predict(test_features)
@@ -423,7 +426,7 @@ def run_techniques(train_folders,test_folders):
             rfrpredl.append(predl(test_label,y_pred,0.3))
             rfrrsq.append(metrics.r2_score(test_label,y_pred))
 
-            print('ETR')
+            #print('ETR')
             etr = ExtraTreesRegressor(n_estimators=best['etr']['n_estimators'], min_samples_leaf=best['etr']['min_samples_leaf'], max_depth=best['etr']['max_depth'])
             etr.fit(x_train, y_train)
             y_pred = etr.predict(test_features)
@@ -445,7 +448,7 @@ def run_techniques(train_folders,test_folders):
             etrpredl.append(predl(test_label,y_pred,0.3))
             etrrsq.append(metrics.r2_score(test_label,y_pred))
 
-            print('KNN')
+            #print('KNN')
             knn = KNeighborsRegressor(n_neighbors=best['knn']['n_neighbors'])
             knn.fit(x_train, y_train)
             y_pred = knn.predict(test_features)
@@ -467,7 +470,7 @@ def run_techniques(train_folders,test_folders):
             knnpredl.append(predl(test_label,y_pred,0.3))
             knnrsq.append(metrics.r2_score(test_label,y_pred))
 
-            print('SVR')
+            #print('SVR')
             svr = SVR(gamma=best['svr']['gamma'],C=best['svr']['C'])
             svr.fit(x_train, y_train)
             y_pred = svr.predict(test_features)
@@ -490,7 +493,7 @@ def run_techniques(train_folders,test_folders):
             svrrsq.append(metrics.r2_score(test_label,y_pred))
 
             t01 = time.time()
-            print('SR')
+            #print('SR')
             reg1=SVR(gamma=best['svr_meta']['svr__gamma'],C=best['svr_meta']['svr__C'])
             reg2=ExtraTreesRegressor(n_estimators=best['svr_meta']['extratreesregressor__n_estimators'],min_samples_leaf=best['svr_meta']['extratreesregressor__min_samples_leaf'])
             reg3=KNeighborsRegressor(n_neighbors=best['svr_meta']['kneighborsregressor__n_neighbors'])
@@ -499,7 +502,7 @@ def run_techniques(train_folders,test_folders):
             rsr.fit(x_train, y_train)
             y_pred = rsr.predict(test_features)
             test_pred = rsr.predict(x_test)
-            print('testing')
+            #print('testing')
             #testing errors
             strmretest.append(mean_relative_error(y_test,test_pred))
             strmaetest.append(metrics.mean_absolute_error(y_test,test_pred))
@@ -508,7 +511,7 @@ def run_techniques(train_folders,test_folders):
             strcomptest.append(measure_completeness(y_test,test_pred))
             strpredltest.append(predl(y_test,test_pred,0.3))
             strrsqtest.append(metrics.r2_score(y_test,test_pred))
-            print('validation')
+            #print('validation')
             #validation errors
             strmre.append(mean_relative_error(test_label,y_pred))
             strmae.append(metrics.mean_absolute_error(test_label,y_pred))
@@ -520,7 +523,7 @@ def run_techniques(train_folders,test_folders):
             t11 = time.time()
             total1=t11-t01
             
-            print('SR2')
+            #print('SR2')
             t02 = time.time()
             reg1=SVR(gamma=best['rfr_meta']['svr__gamma'],C=best['rfr_meta']['svr__C'])
             reg2=ExtraTreesRegressor(n_estimators=best['rfr_meta']['extratreesregressor__n_estimators'],min_samples_leaf=best['rfr_meta']['extratreesregressor__min_samples_leaf'])
@@ -530,7 +533,7 @@ def run_techniques(train_folders,test_folders):
             fsr.fit(x_train, y_train)
             y_pred = fsr.predict(test_features)
             test_pred = fsr.predict(x_test)
-            print('testing')
+            #print('testing')
             #testing errors
             strmretest2.append(mean_relative_error(y_test,test_pred))
             strmaetest2.append(metrics.mean_absolute_error(y_test,test_pred))
@@ -539,7 +542,7 @@ def run_techniques(train_folders,test_folders):
             strcomptest2.append(measure_completeness(y_test,test_pred))
             strpredltest2.append(predl(y_test,test_pred,0.3))
             strrsqtest2.append(metrics.r2_score(y_test,test_pred))
-            print('validation')
+            #print('validation')
             #validation errors
             strmre2.append(mean_relative_error(test_label,y_pred))
             strmae2.append(metrics.mean_absolute_error(test_label,y_pred))
@@ -552,6 +555,8 @@ def run_techniques(train_folders,test_folders):
             total2=t12-t02
             
             i=i+1
+        print("Testing Run: ",run+1," ",filename," finished.")
+
         t1 = time.time()
         total = t1-t0
         dtravgmre.append(np.mean(dtrmre))
@@ -667,40 +672,40 @@ def run_techniques(train_folders,test_folders):
         stravgrsqtest2.append(np.mean(strrsqtest2))
         
 
-        print('dtr: mre: ', np.mean(dtrmre), ' mae: ', np.mean(dtrmae), ' rmse: ', np.mean(dtrrmse))
-        print('test dtr: mre: ', np.mean(dtrmretest), ' mae: ', np.mean(dtrmaetest), ' rmse: ', np.mean(dtrrmsetest))
-        print('rfr: mre: ', np.mean(rfrmre), ' mae: ', np.mean(rfrmae), ' rmse: ', np.mean(rfrrmse))
-        print('test rfr: mre: ', np.mean(rfrmretest), ' mae: ', np.mean(rfrmaetest), ' rmse: ', np.mean(rfrrmsetest))
-        print('etr: mre: ', np.mean(etrmre), ' mae: ', np.mean(etrmae), ' rmse: ', np.mean(etrrmse))
-        print('test etr: mre: ', np.mean(etrmretest), ' mae: ', np.mean(etrmaetest), ' rmse: ', np.mean(etrrmsetest))
-        print('knn: mre: ', np.mean(knnmre), ' mae: ', np.mean(knnmae), ' rmse: ', np.mean(knnrmse))
-        print('test knn: mre: ', np.mean(knnmretest), ' mae: ', np.mean(knnmaetest), ' rmse: ', np.mean(knnrmsetest))
-        print('svr: mre: ', np.mean(svrmre), ' mae: ', np.mean(svrmae), ' rmse: ', np.mean(svrrmse))
-        print('test svr: mre: ', np.mean(svrmretest), ' mae: ', np.mean(svrmaetest), ' rmse: ', np.mean(svrrmsetest))
-#         print('xgb: mre: ', np.mean(bmre), ' mae: ', np.mean(bmae), ' rmse: ', np.mean(brmse))
-#         print('test xgb: mre: ', np.mean(bmretest), ' mae: ', np.mean(bmaetest), ' rmse: ', np.mean(brmsetest))
-        print('str: mre: ', np.mean(strmre), ' mae: ', np.mean(strmae), ' rmse: ', np.mean(strrmse))
-        print('test str: mre: ', np.mean(strmretest), ' mae: ', np.mean(strmaetest), ' rmse: ', np.mean(strrmsetest))
-        print('str2: mre: ', np.mean(strmre2), ' mae: ', np.mean(strmae2), ' rmse: ', np.mean(strrmse2))
-        print('test str2: mre: ', np.mean(strmretest2), ' mae: ', np.mean(strmaetest2), ' rmse: ', np.mean(strrmsetest2))
+#         print('dtr: mre: ', np.mean(dtrmre), ' mae: ', np.mean(dtrmae), ' rmse: ', np.mean(dtrrmse))
+#         print('test dtr: mre: ', np.mean(dtrmretest), ' mae: ', np.mean(dtrmaetest), ' rmse: ', np.mean(dtrrmsetest))
+#         print('rfr: mre: ', np.mean(rfrmre), ' mae: ', np.mean(rfrmae), ' rmse: ', np.mean(rfrrmse))
+#         print('test rfr: mre: ', np.mean(rfrmretest), ' mae: ', np.mean(rfrmaetest), ' rmse: ', np.mean(rfrrmsetest))
+#         print('etr: mre: ', np.mean(etrmre), ' mae: ', np.mean(etrmae), ' rmse: ', np.mean(etrrmse))
+#         print('test etr: mre: ', np.mean(etrmretest), ' mae: ', np.mean(etrmaetest), ' rmse: ', np.mean(etrrmsetest))
+#         print('knn: mre: ', np.mean(knnmre), ' mae: ', np.mean(knnmae), ' rmse: ', np.mean(knnrmse))
+#         print('test knn: mre: ', np.mean(knnmretest), ' mae: ', np.mean(knnmaetest), ' rmse: ', np.mean(knnrmsetest))
+#         print('svr: mre: ', np.mean(svrmre), ' mae: ', np.mean(svrmae), ' rmse: ', np.mean(svrrmse))
+#         print('test svr: mre: ', np.mean(svrmretest), ' mae: ', np.mean(svrmaetest), ' rmse: ', np.mean(svrrmsetest))
+# #         print('xgb: mre: ', np.mean(bmre), ' mae: ', np.mean(bmae), ' rmse: ', np.mean(brmse))
+# #         print('test xgb: mre: ', np.mean(bmretest), ' mae: ', np.mean(bmaetest), ' rmse: ', np.mean(brmsetest))
+#         print('str: mre: ', np.mean(strmre), ' mae: ', np.mean(strmae), ' rmse: ', np.mean(strrmse))
+#         print('test str: mre: ', np.mean(strmretest), ' mae: ', np.mean(strmaetest), ' rmse: ', np.mean(strrmsetest))
+#         print('str2: mre: ', np.mean(strmre2), ' mae: ', np.mean(strmae2), ' rmse: ', np.mean(strrmse2))
+#         print('test str2: mre: ', np.mean(strmretest2), ' mae: ', np.mean(strmaetest2), ' rmse: ', np.mean(strrmsetest2))
 
-    print('-------------------------------------------------------------------------------------------')
-    print('avg dtr: mre: ', np.mean(dtravgmre), ' mae: ', np.mean(dtravgmae), ' rmse: ', np.mean(dtravgrmse))
-    print('test avg dtr: mre: ', np.mean(dtravgmretest), ' mae: ', np.mean(dtravgmaetest), ' rmse: ', np.mean(dtravgrmsetest))
-    print('avg rfr: mre: ', np.mean(rfravgmre), ' mae: ', np.mean(rfravgmae), ' rmse: ', np.mean(rfravgrmse))
-    print('test avg rfr: mre: ', np.mean(rfravgmretest), ' mae: ', np.mean(rfravgmaetest), ' rmse: ', np.mean(rfravgrmsetest))
-    print('avg etr: mre: ', np.mean(etravgmre), ' mae: ', np.mean(etravgmae), ' rmse: ', np.mean(etravgrmse))
-    print('test avg etr: mre: ', np.mean(etravgmretest), ' mae: ', np.mean(etravgmaetest), ' rmse: ', np.mean(etravgrmsetest))
-    print('avg knn: mre: ', np.mean(knnavgmre), ' mae: ', np.mean(knnavgmae), ' rmse: ', np.mean(knnavgrmse))
-    print('test avg knn: mre: ', np.mean(knnavgmretest), ' mae: ', np.mean(knnavgmaetest), ' rmse: ', np.mean(knnavgrmsetest))
-    print('avg svr: mre: ', np.mean(svravgmre), ' mae: ', np.mean(svravgmae), ' rmse: ', np.mean(svravgrmse))
-    print('test avg svr: mre: ', np.mean(svravgmretest), ' mae: ', np.mean(svravgmaetest), ' rmse: ', np.mean(svravgrmsetest))
-#     print('avg xgb: mre: ', np.mean(bavgmre), ' mae: ', np.mean(bavgmae), ' rmse: ', np.mean(bavgrmse))
-#     print('test avg xgb: mre: ', np.mean(bavgmretest), ' mae: ', np.mean(bavgmaetest), ' rmse: ', np.mean(bavgrmsetest))
-    print('avg str: mre: ', np.mean(stravgmre), ' mae: ', np.mean(stravgmae), ' rmse: ', np.mean(stravgrmse))
-    print('test avg str: mre: ', np.mean(stravgmretest), ' mae: ', np.mean(stravgmaetest), ' rmse: ', np.mean(stravgrmsetest))
-    print('avg str2: mre: ', np.mean(stravgmre2), ' mae: ', np.mean(stravgmae2), ' rmse: ', np.mean(stravgrmse2))
-    print('test avg str2: mre: ', np.mean(stravgmretest2), ' mae: ', np.mean(stravgmaetest2), ' rmse: ', np.mean(stravgrmsetest2))
+#     print('-------------------------------------------------------------------------------------------')
+#     print('avg dtr: mre: ', np.mean(dtravgmre), ' mae: ', np.mean(dtravgmae), ' rmse: ', np.mean(dtravgrmse))
+#     print('test avg dtr: mre: ', np.mean(dtravgmretest), ' mae: ', np.mean(dtravgmaetest), ' rmse: ', np.mean(dtravgrmsetest))
+#     print('avg rfr: mre: ', np.mean(rfravgmre), ' mae: ', np.mean(rfravgmae), ' rmse: ', np.mean(rfravgrmse))
+#     print('test avg rfr: mre: ', np.mean(rfravgmretest), ' mae: ', np.mean(rfravgmaetest), ' rmse: ', np.mean(rfravgrmsetest))
+#     print('avg etr: mre: ', np.mean(etravgmre), ' mae: ', np.mean(etravgmae), ' rmse: ', np.mean(etravgrmse))
+#     print('test avg etr: mre: ', np.mean(etravgmretest), ' mae: ', np.mean(etravgmaetest), ' rmse: ', np.mean(etravgrmsetest))
+#     print('avg knn: mre: ', np.mean(knnavgmre), ' mae: ', np.mean(knnavgmae), ' rmse: ', np.mean(knnavgrmse))
+#     print('test avg knn: mre: ', np.mean(knnavgmretest), ' mae: ', np.mean(knnavgmaetest), ' rmse: ', np.mean(knnavgrmsetest))
+#     print('avg svr: mre: ', np.mean(svravgmre), ' mae: ', np.mean(svravgmae), ' rmse: ', np.mean(svravgrmse))
+#     print('test avg svr: mre: ', np.mean(svravgmretest), ' mae: ', np.mean(svravgmaetest), ' rmse: ', np.mean(svravgrmsetest))
+# #     print('avg xgb: mre: ', np.mean(bavgmre), ' mae: ', np.mean(bavgmae), ' rmse: ', np.mean(bavgrmse))
+# #     print('test avg xgb: mre: ', np.mean(bavgmretest), ' mae: ', np.mean(bavgmaetest), ' rmse: ', np.mean(bavgrmsetest))
+#     print('avg str: mre: ', np.mean(stravgmre), ' mae: ', np.mean(stravgmae), ' rmse: ', np.mean(stravgrmse))
+#     print('test avg str: mre: ', np.mean(stravgmretest), ' mae: ', np.mean(stravgmaetest), ' rmse: ', np.mean(stravgrmsetest))
+#     print('avg str2: mre: ', np.mean(stravgmre2), ' mae: ', np.mean(stravgmae2), ' rmse: ', np.mean(stravgrmse2))
+#     print('test avg str2: mre: ', np.mean(stravgmretest2), ' mae: ', np.mean(stravgmaetest2), ' rmse: ', np.mean(stravgrmsetest2))
 
     with open('resultswc-'+ os.path.splitext(filename)[0] +'.txt', 'w') as f:
                         f.write("testing results:\n")
@@ -816,7 +821,7 @@ def run_techniques(train_folders,test_folders):
                         f.write("Total time: %s\n"% (total))
                         
 folders=['ant','camel','ivy','jedit','log4j','lucene','poi','velocity','xalan','xerces']
-for index in range(0,len(folders)):
+def run_cross(index):
     train_folders=[]
     test_index=index
     print(folders[index])
@@ -828,3 +833,7 @@ for index in range(0,len(folders)):
         train_folders=folders[:index]
         train_folders.extend(folders[index+1:])
     run_techniques(train_folders,[folders[test_index]])
+    
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    futures = [executor.submit(run_cross, i) for i in range(len(folders))]
+    results = [future.result() for future in concurrent.futures.as_completed(futures)]
